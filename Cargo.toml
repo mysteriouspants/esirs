@@ -1,0 +1,8 @@
+[workspace]
+members = [
+  ## main crate
+  "esirs",
+
+  ## pseudo-example also used for grabbing test payloads
+  "examples/weblogin"
+]

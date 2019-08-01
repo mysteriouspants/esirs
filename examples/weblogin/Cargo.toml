@@ -1,0 +1,9 @@
+[package]
+name = "mysteriouspants-esiweblogin"
+version = "0.0.1"
+publish = false
+
+[dependencies]
+gotham = "*"
+hyper = "*"
+mysteriouspants-esi = { path = "../../esirs" }
