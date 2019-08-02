@@ -1,21 +1,33 @@
 extern crate gotham;
 extern crate hyper;
 extern crate mysteriouspants_esi;
-
-use mysteriouspants_esi::auth::web_login_url;
-
-use hyper::{Body, Response};
+extern crate serde;
+extern crate serde_derive;
+extern crate toml;
 
 use gotham::helpers::http::response::create_permanent_redirect;
 use gotham::router::builder::*;
 use gotham::state::State;
-
-use std::thread;
+use hyper::{Body, Response};
+use mysteriouspants_esi::auth::web_login_url;
+use serde_derive::Deserialize;
+use std::fs::File;
+use std::io::Read;
 use std::sync::mpsc::{channel, Sender, Receiver};
+use std::thread;
 
 #[derive(Debug)]
 struct LoginResult {
 
+}
+
+#[derive(Deserialize, Debug)]
+struct EsiSecrets {
+  callback_url: String,
+  client_id: String,
+  secret_key: String,
+  secret_salt: String,
+  scopes: Vec<String>
 }
 
 const LOGIN_PROMPT: &str = r#"
@@ -38,6 +50,17 @@ fn redirector(state: State) -> (State, Response<Body>) {
 }
 
 fn main() {
+  // acquire esirs config
+  let mut secrets_string = String::new();
+     File::open(".secrets.toml")
+       .expect("please place your dev secrets at .secrets.toml")
+       .read_to_string(&mut secrets_string)
+       .expect("could not read from secrets file");
+  let secrets: EsiSecrets = toml::from_str(secrets_string.as_str())
+    .expect("could not parse secrets file");
+
+  println!("{:?}", secrets);
+
   let (tx, rx): (Sender<LoginResult>, Receiver<LoginResult>) = channel();
 
   thread::spawn(move || {

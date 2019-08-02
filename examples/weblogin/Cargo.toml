@@ -7,3 +7,6 @@ publish = false
 gotham = "*"
 hyper = "*"
 mysteriouspants-esi = { path = "../../esirs" }
+serde = "*"
+serde_derive = "*"
+toml = "*"

@@ -1,2 +1,12 @@
-* 0.0.1
+#+TITLE: Roadmap
+
+* v0.0.1
 ** TODO login/jwt flow
+** TODO character search
+** TODO corporation search
+** TODO alliance search
+** TODO solar system search
+** TODO constellation search
+** TODO region search
+** TODO proof of character identity (corporation/alliance)
+** TODO data obfuscator for test payloads fetched from ESI non-public scopes
