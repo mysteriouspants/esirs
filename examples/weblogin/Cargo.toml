@@ -5,7 +5,9 @@ publish = false
 
 [dependencies]
 gotham = "*"
+gotham_derive = "*"
 hyper = "*"
+mime = "*"
 mysteriouspants-esi = { path = "../../esirs" }
 serde = "*"
 serde_derive = "*"

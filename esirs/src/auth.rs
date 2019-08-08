@@ -1,13 +1,19 @@
+use std::iter::Iterator;
+
 use url::Url;
 
-pub fn web_login_url(
-  redirect_uri: &str, client_id: &str, scopes: &Vec<&str>, state: &str
-) -> Url {
+pub fn web_login_url<T1, T2>(
+  redirect_uri: &str, client_id: &str, scopes: T1, state: &str
+) -> Url where T1 : IntoIterator<Item = T2>, T2 : AsRef<str> {
+  let joined_scopes = scopes.into_iter()
+          .map(|t1i| String::from(t1i.as_ref()) )
+          .collect::<Vec<_>>()
+          .join(" ");
   Url::parse_with_params(
     "https://login.eveonline.com/v2/oauth/authorize/?response_type=code",
     &[
       ("redirect_uri", redirect_uri), ("client_id", client_id),
-      ("scopes", &scopes.join(" ")), ("state", state)
+      ("scopes", &joined_scopes), ("state", state)
     ]
   ).expect("Could not construct sso login url")
 }
