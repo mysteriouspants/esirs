@@ -1,5 +1,8 @@
 use std::iter::Iterator;
-
+use jsonwebtoken::{Algorithm, decode, TokenData, Validation};
+use reqwest::Error as ReqwestError;
+use serde::{Serialize, Deserialize};
+use std::time::{Duration, SystemTime, SystemTimeError};
 use url::Url;
 
 pub fn web_login_url<T1, T2>(
@@ -17,6 +20,57 @@ pub fn web_login_url<T1, T2>(
     ]
   ).expect("Could not construct sso login url")
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct EsiClaims {
+  scp: Vec<String>,
+  jti: String,
+  kid: String,
+  sub: String,
+  azp: String,
+  name: String,
+  owner: String,
+  /// Token expiration, in epoch seconds.
+  exp: u64,
+  iss: String
+}
+
+pub struct AuthToken {
+  access_token: TokenData<EsiClaims>,
+  expires_at: SystemTime,
+  token_type: String,
+  refresh_token: String
+}
+
+pub enum Code2TokenError {
+  ReqwestError(ReqwestError),
+  ValidationError(jsonwebtoken::errors::Error),
+  ExpiredTokenError(SystemTimeError)
+}
+
+pub fn code_to_token<T1: Into<String>>(
+  code: T1
+) -> Result<AuthToken, Code2TokenError> {
+  // TODO: step the first: call https://login.eveonline.com/v2/oauth/token to
+  //       exchange code for a JWT and refresh token
+
+  // what is secret? is it something generated when i created the esi app?
+  let claims = match decode::<EsiClaims>(
+    code.into().as_str(), secret, &Validation::new(Algorithm::RS256)
+  ) {
+    Ok(claims) => claims,
+    Err(err) => return Err(Code2TokenError::ValidationError(err))
+  };
+
+  // check that it isn't already expired
+  let expiry = SystemTime::UNIX_EPOCH + Duration::from_secs(claims.claims.exp);
+
+  match expiry.elapsed() {
+    Ok(_) => (),
+    Err(err) => return Err(Code2TokenError::ExpiredTokenError(err))
+  };
+
+} 
 
 #[cfg(test)]
 mod tests {

@@ -22,7 +22,7 @@ use std::io::Read;
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread;
 
-#[derive(Deserialize, StateData, StaticResponseExtender)]
+#[derive(Deserialize, StateData, StaticResponseExtender, Debug)]
 struct CallbackQueryStringExtractor {
   code: String,
   state: String
@@ -41,11 +41,14 @@ struct EsiSecrets {
   scopes: Vec<String>
 }
 
-fn login_prompt(state: State) -> (State, (mime::Mime, &'static str)) {
+fn html_response<T: Into<String>>(content: T) -> (mime::Mime, String) {
+  (mime::TEXT_HTML, content.into())
+}
+
+fn login_prompt(state: State) -> (State, (mime::Mime, String)) {
   (
     state,
-    (
-      mime::TEXT_HTML,
+    html_response(
       r#"
         <?doctype html>
         <html>
@@ -63,29 +66,29 @@ fn login_prompt(state: State) -> (State, (mime::Mime, &'static str)) {
 
 fn redirector(state: State) -> (State, Response<Body>) {
   let secrets = EsiSecrets::borrow_from(&state);
-
-  let resp = create_permanent_redirect(
-    &state,
+  let redirect_url = 
     web_login_url(
       secrets.callback_url.as_str(), secrets.client_id.as_str(),
       &secrets.scopes, secrets.secret_salt.as_str()
-    ).to_string()
-  );
+    ).to_string();
+  let resp = create_permanent_redirect(&state, redirect_url);
 
   (state, resp)
 }
 
 fn callback_handler(mut state: State) -> (State, (mime::Mime, String)) {
-  let query_param = CallbackQueryStringExtractor::take_from(&mut state);
+  let query_params = CallbackQueryStringExtractor::take_from(&mut state);
   let secrets = EsiSecrets::borrow_from(&state);
 
-  if secrets.secret_salt != query_param.state {
+  let expected = &secrets.secret_salt;
+  let actual = &query_params.state;
+
+  if expected != actual {
     // unauthorized response
     (
       state,
-      (
-        mime::TEXT_HTML,
-        String::from(r#"
+      html_response(
+        r#"
           <?doctype html>
           <html>
             <head>
@@ -97,7 +100,7 @@ fn callback_handler(mut state: State) -> (State, (mime::Mime, String)) {
               Unable to prove the callback came from ESI.
             </body>
           </html>
-        "#)
+        "#
       )
     )
   } else {
@@ -108,8 +111,7 @@ fn callback_handler(mut state: State) -> (State, (mime::Mime, String)) {
 
     (
       state,
-      (
-        mime::TEXT_HTML,
+      html_response(
         format!(r#"
           <?doctype html>
           <html>
@@ -122,7 +124,7 @@ fn callback_handler(mut state: State) -> (State, (mime::Mime, String)) {
               code: {:?}
             </body>
           </html>
-        "#, &query_param.code)
+        "#, &query_params.code)
       )
     )
   }
