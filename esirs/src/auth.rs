@@ -1,7 +1,12 @@
-use std::iter::Iterator;
+use base64::encode as base64_encode;
 use jsonwebtoken::{Algorithm, decode, TokenData, Validation};
-use reqwest::Error as ReqwestError;
+use reqwest::{
+  Client as ReqwestClient,
+  Error as ReqwestError,
+  Result as ReqwestResult
+};
 use serde::{Serialize, Deserialize};
+use std::iter::Iterator;
 use std::time::{Duration, SystemTime, SystemTimeError};
 use url::Url;
 
@@ -42,34 +47,64 @@ pub struct AuthToken {
   refresh_token: String
 }
 
-pub enum Code2TokenError {
-  ReqwestError(ReqwestError),
-  ValidationError(jsonwebtoken::errors::Error),
-  ExpiredTokenError(SystemTimeError)
+#[derive(Deserialize)]
+struct UnvalidatedToken {
+  access_token: String,
+  expires_at: u64,
+  token_type: String,
+  refresh_token: String
 }
 
-pub fn code_to_token<T1: Into<String>>(
-  code: T1
+pub enum Code2TokenError {
+  ReqwestError(ReqwestError),
+  ValidationError(jsonwebtoken::errors::Error)
+}
+
+/// secret = the secret key assigned when the EVE 3P Application was generated
+pub fn code_to_token(
+  login_client: &ReqwestClient, code: &str, client_id: &str, secret: &str
 ) -> Result<AuthToken, Code2TokenError> {
-  // TODO: step the first: call https://login.eveonline.com/v2/oauth/token to
-  //       exchange code for a JWT and refresh token
+  let token = {
+    let response = login_client.post("https://login.eveonline.com/v2/oauth/token")
+      .form(&[("grant_type", "authorization_code"), ("code", &code)])
+      .header(
+        "Authorization",
+        format!("Basic {}",base64_encode(&format!("{}:{}", client_id, secret)))
+      )
+      .send();
 
-  // what is secret? is it something generated when i created the esi app?
-  let claims = match decode::<EsiClaims>(
-    code.into().as_str(), secret, &Validation::new(Algorithm::RS256)
-  ) {
-    Ok(claims) => claims,
-    Err(err) => return Err(Code2TokenError::ValidationError(err))
+    let mut raw_response = match response {
+      Ok(raw) => raw,
+      Err(err) => return Err(Code2TokenError::ReqwestError(err))
+    };
+
+    let token: UnvalidatedToken = match raw_response.json::<UnvalidatedToken>() {
+      Ok(token) => token,
+      Err(err) => return Err(Code2TokenError::ReqwestError(err))
+    };
+
+    token
   };
 
-  // check that it isn't already expired
-  let expiry = SystemTime::UNIX_EPOCH + Duration::from_secs(claims.claims.exp);
+  let claims = {
+    let validation_result = decode::<EsiClaims>(
+      &token.access_token, secret.as_bytes(), &Validation::new(Algorithm::RS256)
+    );
 
-  match expiry.elapsed() {
-    Ok(_) => (),
-    Err(err) => return Err(Code2TokenError::ExpiredTokenError(err))
+    match validation_result {
+      Ok(claims) => claims,
+      Err(err) => return Err(Code2TokenError::ValidationError(err))
+    }
   };
 
+  let auth_token = AuthToken {
+    expires_at: SystemTime::UNIX_EPOCH + Duration::from_secs(claims.claims.exp),
+    access_token: claims,
+    token_type: token.token_type,
+    refresh_token: token.refresh_token
+  };
+
+  Ok(auth_token)
 } 
 
 #[cfg(test)]
