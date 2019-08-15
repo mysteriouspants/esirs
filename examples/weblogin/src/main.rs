@@ -4,14 +4,14 @@ extern crate gotham_derive;
 extern crate hyper;
 extern crate mime;
 extern crate mysteriouspants_esi;
-extern crate serde;
 extern crate serde_derive;
+extern crate serde;
 extern crate toml;
 
-use gotham::middleware::state::StateMiddleware;
-use gotham::pipeline::single::single_pipeline;
-use gotham::pipeline::single_middleware;
 use gotham::helpers::http::response::create_permanent_redirect;
+use gotham::middleware::state::StateMiddleware;
+use gotham::pipeline::single_middleware;
+use gotham::pipeline::single::single_pipeline;
 use gotham::router::builder::*;
 use gotham::state::{FromState, State};
 use hyper::{Body, Response};
