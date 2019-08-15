@@ -60,42 +60,36 @@ pub enum Code2TokenError {
   ValidationError(jsonwebtoken::errors::Error)
 }
 
+impl From<ReqwestError> for Code2TokenError {
+  fn from(error: ReqwestError) -> Code2TokenError {
+    Code2TokenError::ReqwestError(error)
+  }
+}
+
+impl From<jsonwebtoken::errors::Error> for Code2TokenError {
+  fn from(error: jsonwebtoken::errors::Error) -> Code2TokenError {
+    Code2TokenError::ValidationError(error)
+  }
+}
+
 /// secret = the secret key assigned when the EVE 3P Application was generated
 pub fn code_to_token(
   login_client: &ReqwestClient, code: &str, client_id: &str, secret: &str
 ) -> Result<AuthToken, Code2TokenError> {
-  let token = {
-    let response = login_client.post("https://login.eveonline.com/v2/oauth/token")
+  let token =
+    login_client.post("https://login.eveonline.com/v2/oauth/token")
       .form(&[("grant_type", "authorization_code"), ("code", &code)])
       .header(
         "Authorization",
         format!("Basic {}",base64_encode(&format!("{}:{}", client_id, secret)))
       )
-      .send();
+      .send()?
+      .json::<UnvalidatedToken>()?;
 
-    let mut raw_response = match response {
-      Ok(raw) => raw,
-      Err(err) => return Err(Code2TokenError::ReqwestError(err))
-    };
-
-    let token: UnvalidatedToken = match raw_response.json::<UnvalidatedToken>() {
-      Ok(token) => token,
-      Err(err) => return Err(Code2TokenError::ReqwestError(err))
-    };
-
-    token
-  };
-
-  let claims = {
-    let validation_result = decode::<EsiClaims>(
+  let claims =
+    decode::<EsiClaims>(
       &token.access_token, secret.as_bytes(), &Validation::new(Algorithm::RS256)
-    );
-
-    match validation_result {
-      Ok(claims) => claims,
-      Err(err) => return Err(Code2TokenError::ValidationError(err))
-    }
-  };
+    )?;
 
   let auth_token = AuthToken {
     expires_at: SystemTime::UNIX_EPOCH + Duration::from_secs(claims.claims.exp),
