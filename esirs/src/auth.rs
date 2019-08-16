@@ -75,10 +75,15 @@ pub fn code_to_token(
     refresh_token: token.refresh_token
   };
 
-  Ok(auth_token)
+  if auth_token.access_token.claims.iss != "login.eveonline.com" {
+    Err(Code2TokenError::BadIssuer(auth_token))
+  } else {
+    Ok(auth_token)
+  }
 } 
 
 /// Persistable token which allows you to make priveleged calls to ESI.
+#[derive(Debug)]
 pub struct AuthToken {
 
   /// JWT access token.
@@ -97,18 +102,35 @@ pub struct AuthToken {
 }
 
 /// JWT claims.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct EsiClaims {
+
+  /// Authorization scopes; these should match those you requested.
   scp: Vec<String>,
+
+  /// Some UDID?
   jti: String,
+
+  /// Usually just `JWT-Signature-Key`.
   kid: String,
+
+  /// String containing the character id, such as `CHARACTER:EVE:123456`.
   sub: String,
+
+  /// The client id of your 3P client.
   azp: String,
+
+  /// Authenticated character name.
   name: String,
+
+  /// Owner hash. This will change if the character is transferred to another
+  /// account.
   owner: String,
 
   /// Token expiration, in epoch seconds.
   exp: u64,
+
+  /// The issuer, which should always be `login.eveonline.com`.
   iss: String
 }
 
@@ -140,7 +162,10 @@ pub enum Code2TokenError {
   ReqwestError(ReqwestError),
 
   /// An error validating the resulting JWT. This definitely means goon spais.
-  ValidationError(JWTError)
+  ValidationError(JWTError),
+
+  /// The identity of the token issuer could not be verified.
+  BadIssuer(AuthToken)
 }
 
 // little bit of boilerplate which allows the ? operator to work
