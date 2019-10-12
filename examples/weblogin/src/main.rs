@@ -15,10 +15,12 @@ use gotham::pipeline::single::single_pipeline;
 use gotham::router::builder::*;
 use gotham::state::{FromState, State};
 use hyper::{Body, Response};
-use mysteriouspants_esi::auth::web_login_url;
+use mysteriouspants_esi::auth::{web_login_url, code_to_token, UnvalidatedToken};
+use mysteriouspants_esi::Client as EsiClient;
 use serde_derive::Deserialize;
 use std::fs::File;
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread;
 
@@ -65,7 +67,7 @@ fn login_prompt(state: State) -> (State, (mime::Mime, String)) {
 }
 
 fn redirector(state: State) -> (State, Response<Body>) {
-  let secrets = EsiSecrets::borrow_from(&state);
+  let secrets = &ServiceState::borrow_from(&state).esi_secrets;
   let redirect_url = 
     web_login_url(
       secrets.callback_url.as_str(), secrets.client_id.as_str(),
@@ -78,9 +80,10 @@ fn redirector(state: State) -> (State, Response<Body>) {
 
 fn callback_handler(mut state: State) -> (State, (mime::Mime, String)) {
   let query_params = CallbackQueryStringExtractor::take_from(&mut state);
-  let secrets = EsiSecrets::borrow_from(&state);
+  let service_state = &ServiceState::borrow_from(&state);
 
-  let expected = &secrets.secret_salt;
+
+  let expected = &service_state.esi_secrets.secret_salt;
   let actual = &query_params.state;
 
   if expected != actual {
@@ -121,10 +124,10 @@ fn callback_handler(mut state: State) -> (State, (mime::Mime, String)) {
             <body>
               <strong>Authorisation successful</strong>
               <p/>
-              code: {:?}
+              auth_token: {:?}
             </body>
           </html>
-        "#, &query_params.code)
+        "#, &auth_token)
       )
     )
   }
@@ -142,7 +145,7 @@ fn main() {
 
   let (tx, rx): (Sender<LoginResult>, Receiver<LoginResult>) = channel();
 
-  let state_data_middleware = StateMiddleware::new(secrets);
+  let state_data_middleware = StateMiddleware::new(service_state);
   let pipeline = single_middleware(state_data_middleware);
   let (chain, pipelines) = single_pipeline(pipeline);
 
