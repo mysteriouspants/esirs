@@ -30,10 +30,6 @@ struct CallbackQueryStringExtractor {
   state: String
 }
 
-#[derive(Debug)]
-struct LoginResult {
-}
-
 #[derive(Clone, Deserialize, Debug, StateData)]
 struct EsiSecrets {
   callback_url: String,
@@ -45,6 +41,9 @@ struct EsiSecrets {
 
 #[derive(Clone, Debug, StateData)]
 struct ServiceState {
+  esi_secrets: EsiSecrets,
+  response_channel: Arc<Mutex<Sender<UnvalidatedToken>>>,
+  esi_client: Arc<Mutex<EsiClient>>
 }
 
 fn html_response<T: Into<String>>(content: T) -> (mime::Mime, String) {
@@ -112,9 +111,18 @@ fn callback_handler(mut state: State) -> (State, (mime::Mime, String)) {
     )
   } else {
     // authorized response
+    let auth_token = {
+      let esi_client = &service_state.esi_client.lock().expect("Cannot acquire esi client!");
+      code_to_token(
+        &esi_client, &query_params.code, &service_state.esi_secrets.client_id,
+        &service_state.esi_secrets.secret_key
+      ).expect("Failed to auth with the SSO server")
+    };
 
-    // TODO: call token URL and make it real, place the result in
-    //       a file or something for later scripts to reuse.
+    {
+      let response_channel = service_state.response_channel.lock().expect("Cannot aquire response channel");
+      response_channel.send(auth_token.clone()).expect("Could not send over channel");
+    }
 
     (
       state,
@@ -146,11 +154,11 @@ fn main() {
        .expect("could not read from secrets file");
   let secrets: EsiSecrets = toml::from_str(secrets_string.as_str())
     .expect("could not parse secrets file");
-
-  let (tx, rx): (Sender<LoginResult>, Receiver<LoginResult>) = channel();
-
+  let (tx, rx): (Sender<UnvalidatedToken>, Receiver<UnvalidatedToken>) = channel();
   let service_state = ServiceState {
-
+    esi_secrets: secrets,
+    response_channel: Arc::new(Mutex::new(tx)),
+    esi_client: Arc::new(Mutex::new(EsiClient::new()))
   };
 
   let state_data_middleware = StateMiddleware::new(service_state);
